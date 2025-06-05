@@ -3,7 +3,7 @@ import os
 import asyncio
 import json
 from pathlib import Path
-from crawl4ai_testing import AsyncWebCrawler, BFSDeepCrawlStrategy, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig
+from crawl4ai_testing.crawl4ai import AsyncWebCrawler, BFSDeepCrawlStrategy, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig
 from crawl4ai_testing.crawl4ai.extraction_strategy import LLMExtractionStrategy
 from pydantic import BaseModel, Field
 
