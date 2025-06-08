@@ -7,7 +7,7 @@ import requests, os, json
 url = "https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory"
 page = requests.get(url).text
 soup = BeautifulSoup(page, "lxml")
-container = soup.select_one("#courseinventory")
+container = soup  # .select_one("#courseinventory")
 html_snippet = container.encode_contents().decode() if container else page
 
 # 2) Prune it to only text-dense blocks
@@ -17,15 +17,35 @@ filtered_chunks = pruner.filter_content(html_snippet)
 # stitch them back together into one little HTML payload
 html_for_schema = "\n".join(filtered_chunks)
 
+query="""
+Generate a JSON _schema_ (not the data!) using CSS selectors that will extract every course on this page snippet. The field selectors should work using the base selector as its root.
+**Schema must be structured exactly like this**:
+
+{
+  "name": "Course Block",
+  "baseSelector": "<CSS selector, e.g. div.courseblock>",
+  "fields": [
+    { "name": "course_code",        "selector": "<CSS>", "type": "text" },
+    { "name": "course_title",       "selector": "<CSS>", "type": "text" },
+    { "name": "course_description", "selector": "<CSS>", "type": "text" }
+  ]
+}
+"""
+
+
 # 3) Now pass that much smaller blob to the LLM
-llm_cfg = LLMConfig(provider="openai/gpt-4o", api_token=os.getenv("OPENAI_API_KEY"))
+llm_cfg = LLMConfig(provider="openai/gpt-4o-mini", api_token=os.getenv("OPENAI_API_KEY"))
+# llm_cfg = LLMConfig(
+#     provider="ollama/gemma3:12b",
+#     # provider="ollama/mistral",
+#     base_url="http://localhost:11434",
+#     api_token=None
+# )
+
 schema = JsonCssExtractionStrategy.generate_schema(
     html_for_schema,
     schema_type="CSS",
-    query=(
-        "Extract every distinct course listing in this snippet. "
-        "For each block produce fields: course_code, course_title, course_description."
-    ),
+    query=query,
     target_json_example=json.dumps([{
         "course_code": "BIOL 0280",
         "course_title": "Biochemistry",
