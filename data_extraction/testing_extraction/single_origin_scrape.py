@@ -40,18 +40,20 @@ Spr | BIOL0280 | S01 | 20181 | TTh | 1:00-2:20(08) | (W. Holmes)
 ---|---|---|---|---|---|---  
 
 Example formatted json:
-{
-    "course_code": "BIOL 0280",
-    "course_title": "Biochemistry",
-    "course_description": "Lectures and recitation sections explore the mechanisms involved in the principles of macromolecular structure and function, the organization and regulation of pathways for intermediary metabolism, and the transfer of information from genes to proteins."
-}
+[
+    {
+        "course_code": "BIOL 0280",
+        "course_title": "Biochemistry",
+        "course_description": "Lectures and recitation sections explore the mechanisms involved in the principles of macromolecular structure and function, the organization and regulation of pathways for intermediary metabolism, and the transfer of information from genes to proteins."
+    },
+    ... // additional courses listed
+]
 """
 
 class CourseSchema(BaseModel):
     course_code: str = Field(..., description="Catalog number, e.g., 'BIOL 0040'")
     course_title: str = Field(..., description="Title, e.g., 'Nutrition for Fitness and Physical Activity'")
     course_description: str = Field(..., description="Complete text description of the specific course")
-
 
 async def ScrapeBrown():
     # url = "https://bulletin.brown.edu/"
