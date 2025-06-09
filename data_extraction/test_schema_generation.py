@@ -2,6 +2,7 @@ from crawl4ai import JsonCssExtractionStrategy, LLMConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 import requests, os, json
+from pathlib import Path
 
 # 1) Fetch the page and pull out your course‐container
 url = "https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory"
@@ -18,7 +19,7 @@ filtered_chunks = pruner.filter_content(html_snippet)
 html_for_schema = "\n".join(filtered_chunks)
 
 query="""
-Generate a JSON _schema_ (not the data!) using CSS selectors that will extract every course on this page snippet. The field selectors should work using the base selector as its root.
+Generate a JSON _schema_ (not the data!) filling in the valid CSS selectors for each course block and each of the course fields.
 **Schema must be structured exactly like this**:
 
 {
@@ -34,7 +35,11 @@ Generate a JSON _schema_ (not the data!) using CSS selectors that will extract e
 
 
 # 3) Now pass that much smaller blob to the LLM
-llm_cfg = LLMConfig(provider="openai/gpt-4o-mini", api_token=os.getenv("OPENAI_API_KEY"))
+llm_cfg = LLMConfig(
+    provider="openai/gpt-4o-mini",
+    api_token=os.getenv("OPENAI_API_KEY"),
+    temprature=0.0
+)
 # llm_cfg = LLMConfig(
 #     provider="ollama/gemma3:12b",
 #     # provider="ollama/mistral",
@@ -55,3 +60,8 @@ schema = JsonCssExtractionStrategy.generate_schema(
 )
 
 print("Generated schema:\n", json.dumps(schema, indent=2))
+
+file = Path('output/brown_schema.json')
+
+with open(file, "w") as out:
+    out.write(json.dumps(schema, indent=2))
