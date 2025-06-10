@@ -18,12 +18,12 @@ html_snippet = container # .encode_contents().decode() if container else page
 
 async def scrape_with_schema():
     browser_cfg = BrowserConfig(headless=True)
-    extract_strat = JsonCssExtractionStrategy(schema)
+    extraction_strategy = JsonCssExtractionStrategy(schema)
 
     run_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         scraping_strategy=LXMLWebScrapingStrategy(),
-        extraction_strategy=extract_strat
+        extraction_strategy=extraction_strategy
     )
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:

@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, TypedDict
+import httpx
 from typing_extensions import TypeAlias
 
 from crawl4ai import (
@@ -13,6 +14,9 @@ from crawl4ai import (
     BrowserConfig,
     CacheMode,
     CrawlerRunConfig,
+    DomainFilter,
+    FilterChain,
+    URLFilter,
 )
 
 # ---------------------------------------------------------------------------
@@ -31,7 +35,7 @@ CrawledPage: TypeAlias = _CrawledPageData
 async def crawl_and_collect_urls(
     root_url: str,
     *,
-    max_crawl_depth: int = 1,
+    max_crawl_depth: int = 4,
     page_timeout_ms: int = 60_000,
     word_count_min: int = 10,
     include_external_links: bool = False,
@@ -39,55 +43,89 @@ async def crawl_and_collect_urls(
     """Crawl a single root URL and return a *set* of unique URLs discovered."""
 
     print(f"\n🚀 Starting URL discovery from {root_url} (max depth {max_crawl_depth})…")
+    class ValidURLFilter(URLFilter):
+        def apply(self, url: str) -> bool:
+            try:
+                resp = httpx.head(url, follow_redirects=True, timeout=0.5)
+                if r.status_code == 405:
+                    r = httpx.get(url, follow_redirects=True, timeout=0.5)
+                return 200 <= resp.status_code < 400
+            except Exception:
+                return False
+
+    url_filter_chain = FilterChain([
+        DomainFilter(allowed_domains=["bulletin.brown.edu"]),
+        ValidURLFilter()
+    ])
+
+    crawl_strat = BFSDeepCrawlStrategy(
+        max_depth=max_crawl_depth,
+        include_external=include_external_links,
+        filter_chain=url_filter_chain
+    )
 
     browser_cfg = BrowserConfig(headless=True, verbose=False)
     run_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
+        stream=True,
         page_timeout=page_timeout_ms,
         word_count_threshold=word_count_min,
-        deep_crawl_strategy=BFSDeepCrawlStrategy(
-            max_depth=max_crawl_depth,
-            include_external=include_external_links,
-        ),
+        deep_crawl_strategy=crawl_strat,
         js_code=[
             """(async () => {
-                     const selectors = [
-                         '.toggle-button', "[data-toggle='collapse']", '.accordion-button',
-                         "[role='button'][aria-expanded='false']",
-                     ];
-                     for (const selector of selectors) {
-                         const toggles = document.querySelectorAll(selector);
-                         for (const btn of toggles) {
-                             if (btn.offsetParent !== null && !btn.disabled) {
-                                 try { btn.click(); await new Promise(r => setTimeout(r, 150)); }
-                                 catch (e) { console.warn('JS click error:', e); }
-                             }
-                         }
-                     }
-                 })();"""
+                const selectors = [
+                    '.toggle-button', "[data-toggle='collapse']", '.accordion-button',
+                    "[role='button'][aria-expanded='false']",
+                ];
+                for (const selector of selectors) {
+                    const toggles = document.querySelectorAll(selector);
+                    for (const btn of toggles) {
+                        if (btn.offsetParent !== null && !btn.disabled) {
+                            try { btn.click(); await new Promise(r => setTimeout(r, 150)); }
+                            catch (e) { console.warn('JS click error:', e); }
+                        }
+                    }
+                }
+            })();"""
         ],
     )
 
+    seen = set()
+
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        crawled_pages_raw = await crawler.arun(url=root_url, config=run_cfg)
-        crawled_pages: list[CrawledPage] = crawled_pages_raw if isinstance(crawled_pages_raw, list) else []
+        async for page in await crawler.arun(url=root_url, config=run_cfg):
+            print(f"\nPAGE {page.metadata.get('depth', '?')}] {page.url}")
+            for link in page.links.get("internal", []) + page.links.get("external", []):
+                href = link.get("href")
+                if href and href not in seen:
+                    print(f"    → discovered: {href}")
+                    # if "wen" in href:
+                    #     return seen
+                    seen.add(href)
 
-    unique_urls: set[str] = set()
+    print(f"\nTotal unique URLs: {len(seen)}")
+    return seen
 
-    for page_item in crawled_pages:
-        # Handle both object and dict variants
-        doc_url: str | None = (
-            getattr(page_item, "url", None)
-            if hasattr(page_item, "url")
-            else page_item.get("url")  # type: ignore[arg-type]
-            if isinstance(page_item, dict)
-            else None
-        )
-        if doc_url:
-            unique_urls.add(doc_url)
 
-    print(f"🔎 Found {len(unique_urls)} unique URL(s) from {root_url}.")
-    return unique_urls
+        # crawled_pages_raw = await crawler.arun(url=root_url, config=run_cfg)
+        # crawled_pages: list[CrawledPage] = crawled_pages_raw if isinstance(crawled_pages_raw, list) else []
+
+    # unique_urls: set[str] = set()
+
+    # for page_item in crawled_pages:
+    #     # Handle both object and dict variants
+    #     doc_url: str | None = (
+    #         getattr(page_item, "url", None)
+    #         if hasattr(page_item, "url")
+    #         else page_item.get("url")  # type: ignore[arg-type]
+    #         if isinstance(page_item, dict)
+    #         else None
+    #     )
+    #     if doc_url:
+    #         unique_urls.add(doc_url)
+
+    # print(f"🔎 Found {len(unique_urls)} unique URL(s) from {root_url}.")
+    # return unique_urls
 
 
 async def main() -> None:  # pragma: no cover
@@ -111,7 +149,7 @@ async def main() -> None:  # pragma: no cover
             max_crawl_depth=uni.get("crawl_depth", 1),
             page_timeout_ms=uni.get("page_timeout", 60_000),
             word_count_min=uni.get("word_count_threshold", 20),
-            include_external_links=uni.get("include_external", False),
+            include_external_links=uni.get("include_external", False)
         )
         all_urls.update(crawled_urls)
 
